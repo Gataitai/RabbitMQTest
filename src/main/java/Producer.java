@@ -1,16 +1,17 @@
-import Message.Message;
-import Message.MessageType;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rabbitmq.client.*;
 
 import java.io.IOException;
 import java.util.Scanner;
 import java.util.UUID;
-import java.util.concurrent.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 public class Producer {
     private static final String QUEUE_NAME = "example_queue";
-    private static final String EXCHANGE_NAME = "";
+    private static final String EXCHANGE_NAME = "direct_exchange";
     private static final String ROUTING_KEY = QUEUE_NAME;
 
     private final ObjectMapper objectMapper;
@@ -21,7 +22,7 @@ public class Producer {
         this.objectMapper = new ObjectMapper();
         this.channel = createChannel();
         this.callbackQueue = channel.queueDeclare().getQueue();
-        declareQueue();  // Declare the main queue in the constructor
+        declareRabbitMQ();  // Declare the exchange and bind the queue in the constructor
     }
 
     public static void main(String[] args) throws IOException, TimeoutException {
@@ -44,22 +45,37 @@ public class Producer {
         return connection.createChannel();
     }
 
-    private void declareQueue() throws IOException {
+    private void declareRabbitMQ() throws IOException {
+        // Declare the exchange
+        channel.exchangeDeclare(EXCHANGE_NAME, BuiltinExchangeType.DIRECT);
+
+        // Declare the queue
         channel.queueDeclare(QUEUE_NAME, false, false, false, null);
+
+        // Bind the queue to the exchange with the routing key
+        channel.queueBind(QUEUE_NAME, EXCHANGE_NAME, ROUTING_KEY);
     }
 
     private Thread createTerminationListener() {
         return new Thread(() -> {
-            System.out.println("Press 'q' to terminate the producer.");
+            System.out.println("Press 'q' to terminate the producer or 's' to send a message.");
             Scanner scanner = new Scanner(System.in);
             while (true) {
-                if (scanner.nextLine().equalsIgnoreCase("q")) {
+                String input = scanner.nextLine();
+                if (input.equalsIgnoreCase("q")) {
                     System.out.println("Terminating producer...");
                     System.exit(0);
+                } else if (input.equalsIgnoreCase("s")) {
+                    try {
+                        sendMessageWithTimeout();
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
                 }
             }
         });
     }
+
 
     private void sendMessageWithTimeout() throws IOException {
         // Generate a unique correlation ID for this message
@@ -68,8 +84,22 @@ public class Producer {
         // Set up a CompletableFuture for handling the response
         CompletableFuture<Void> responseFuture = new CompletableFuture<>();
 
+        // Send the message
+        Message message = new Message(MessageType.MESSAGE, "hello");
+        byte[] messageBytes = objectMapper.writeValueAsBytes(message);
+
+        AMQP.BasicProperties properties = new AMQP.BasicProperties.Builder()
+                .correlationId(correlationId)
+                .replyTo(callbackQueue)
+                .build();
+
+        // Publish the message
+        channel.basicPublish(EXCHANGE_NAME, ROUTING_KEY, properties, messageBytes);
+        System.out.println(" [x] Sent '" + message.getText() + "' with Correlation ID: " + correlationId);
+
         // Set up the consumer for the specific correlation ID after publishing
         DeliverCallback deliverCallback = (consumerTag, delivery) -> {
+            System.out.println("expecting corelationId: "+ correlationId);
             if (correlationId.equals(delivery.getProperties().getCorrelationId())) {
                 try {
                     Message responseMessage = objectMapper.readValue(delivery.getBody(), Message.class);
@@ -83,20 +113,6 @@ public class Producer {
 
         channel.basicConsume(callbackQueue, true, deliverCallback, consumerTag -> {
         });
-
-        // Send the message
-        Message message = new Message(MessageType.MESSAGE, "hello");
-        byte[] messageBytes = objectMapper.writeValueAsBytes(message);
-
-        AMQP.BasicProperties properties = new AMQP.BasicProperties.Builder()
-                .correlationId(correlationId)
-                .replyTo(callbackQueue)
-                .build();
-
-        // Publish the message
-        channel.basicPublish(EXCHANGE_NAME, ROUTING_KEY, properties, messageBytes);
-
-        System.out.println(" [x] Sent '" + message.getText() + "' with Correlation ID: " + correlationId);
 
         // Wait for the response with a timeout of 20 seconds
         try {

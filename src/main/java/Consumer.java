@@ -1,7 +1,5 @@
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rabbitmq.client.*;
-import Message.Message;
-import Message.MessageType;
 
 import java.io.IOException;
 import java.util.Scanner;
@@ -9,6 +7,8 @@ import java.util.concurrent.TimeoutException;
 
 public class Consumer {
     private static final String QUEUE_NAME = "example_queue";
+    private static final String EXCHANGE_NAME = "direct_exchange";
+    private static final String ROUTING_KEY = QUEUE_NAME;
     private final ObjectMapper objectMapper;
     private final Channel channel;
 
@@ -24,7 +24,7 @@ public class Consumer {
     }
 
     private void run() throws IOException {
-        declareQueue();
+        declareRabbitMQ();
 
         Thread terminationListener = createTerminationListener();
         terminationListener.start();
@@ -33,8 +33,15 @@ public class Consumer {
         channel.basicConsume(QUEUE_NAME, true, deliverCallback, consumerTag -> {});
     }
 
-    private void declareQueue() throws IOException {
+    private void declareRabbitMQ() throws IOException {
+        // Declare the exchange
+        channel.exchangeDeclare(EXCHANGE_NAME, BuiltinExchangeType.DIRECT);
+
+        // Declare the queue
         channel.queueDeclare(QUEUE_NAME, false, false, false, null);
+
+        // Bind the queue to the exchange with the routing key
+        channel.queueBind(QUEUE_NAME, EXCHANGE_NAME, ROUTING_KEY);
     }
 
     private Thread createTerminationListener() {
@@ -67,10 +74,19 @@ public class Consumer {
     }
 
     private void sendResponse(Delivery delivery) throws IOException {
+        Message receivedMessage = objectMapper.readValue(delivery.getBody(), Message.class);
+
+        // Create the response message
         Message responseMessage = new Message(MessageType.OK, "hello back");
         byte[] responseBytes = objectMapper.writeValueAsBytes(responseMessage);
 
-        channel.basicPublish("", delivery.getProperties().getReplyTo(), null, responseBytes);
+        // Set the correlationId in the properties of the response message
+        AMQP.BasicProperties replyProperties = new AMQP.BasicProperties.Builder()
+                .correlationId(delivery.getProperties().getCorrelationId())
+                .build();
+
+        // Publish the response message with the correlationId
+        channel.basicPublish("", delivery.getProperties().getReplyTo(), replyProperties, responseBytes);
 
         System.out.println(" [x] Sent response '" + responseMessage.getText() + "'");
     }

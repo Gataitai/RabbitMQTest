@@ -19,16 +19,31 @@
         <dependency>
             <groupId>com.rabbitmq</groupId>
             <artifactId>amqp-client</artifactId>
-            <version>5.13.0</version> <!-- Use the latest version -->
+            <version>5.16.0</version>
         </dependency>
 
         <!-- Jackson Dependencies -->
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>
-            <version>2.12.5</version> <!-- Use the latest version -->
+            <version>2.13.3</version>
         </dependency>
-        
+
+
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+            <version>1.7.32</version> <!-- Use the latest version available -->
+        </dependency>
+
+        <!-- SLF4J Simple (Default Binding) -->
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-simple</artifactId>
+            <version>1.7.32</version> <!-- Use the same version as slf4j-api -->
+            <scope>runtime</scope> <!-- This is a runtime dependency, not needed for compilation -->
+        </dependency>
+
     </dependencies>
 
 </project>

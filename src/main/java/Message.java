@@ -1,12 +1,14 @@
-package Message;
-
 public class Message {
-    private final MessageType messageType;
-    private final String text;
+    private MessageType messageType;
+    private String text;
 
     public Message(MessageType messageType, String text) {
         this.messageType = messageType;
         this.text = text;
+    }
+
+    public Message() {
+
     }
 
     public MessageType getMessageType() {
