@@ -60,7 +60,7 @@ public class Consumer {
     private DeliverCallback createDeliverCallback() {
         return (consumerTag, delivery) -> {
             Message receivedMessage = objectMapper.readValue(delivery.getBody(), Message.class);
-            System.out.println(" [x] Received '" + receivedMessage.getText() + "'");
+            System.out.println(" [x] Received '" + receivedMessage.getText() + "'. from id: " + delivery.getProperties().getCorrelationId());
 
             handleMessageType(delivery, receivedMessage);
         };
@@ -88,7 +88,7 @@ public class Consumer {
         // Publish the response message with the correlationId
         channel.basicPublish("", delivery.getProperties().getReplyTo(), replyProperties, responseBytes);
 
-        System.out.println(" [x] Sent response '" + responseMessage.getText() + "'");
+        System.out.println(" [x] Sent response '" + responseMessage.getText() + "'. to id: " +delivery.getProperties().getCorrelationId());
     }
 
     private Connection getConnection() throws IOException, TimeoutException {

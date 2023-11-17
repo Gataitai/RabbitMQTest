@@ -81,8 +81,8 @@ public class Producer {
         // Generate a unique correlation ID for this message
         String correlationId = UUID.randomUUID().toString();
 
-        // Set up a CompletableFuture for handling the response
-        CompletableFuture<Void> responseFuture = new CompletableFuture<>();
+//        // Set up a CompletableFuture for handling the response
+//        CompletableFuture<Void> responseFuture = new CompletableFuture<>();
 
         // Send the message
         Message message = new Message(MessageType.MESSAGE, "hello");
@@ -99,26 +99,27 @@ public class Producer {
 
         // Set up the consumer for the specific correlation ID after publishing
         DeliverCallback deliverCallback = (consumerTag, delivery) -> {
-            System.out.println("expecting corelationId: "+ correlationId);
-            if (correlationId.equals(delivery.getProperties().getCorrelationId())) {
+            if(correlationId.equals(delivery.getProperties().getCorrelationId())){
                 try {
                     Message responseMessage = objectMapper.readValue(delivery.getBody(), Message.class);
                     System.out.println(" [x] Received response '" + responseMessage.getText() + "' for Correlation ID: " + correlationId);
-                    responseFuture.complete(null); // Complete the CompletableFuture on receiving a response
                 } catch (IOException e) {
                     e.printStackTrace();
                 }
+            }else {
+                System.out.printf("correlationId's dont match. correlationId: " + correlationId + " - delivery: " + delivery.getProperties().getCorrelationId());
             }
+//            responseFuture.complete(null); // Complete the CompletableFuture on receiving a response
         };
 
         channel.basicConsume(callbackQueue, true, deliverCallback, consumerTag -> {
         });
 
-        // Wait for the response with a timeout of 20 seconds
-        try {
-            responseFuture.get(20, TimeUnit.SECONDS);
-        } catch (InterruptedException | ExecutionException | TimeoutException e) {
-            System.out.println(" [!] Timeout: No response received within 20 seconds.");
-        }
+//        // Wait for the response with a timeout of 20 seconds
+//        try {
+//            responseFuture.get(20, TimeUnit.SECONDS);
+//        } catch (InterruptedException | ExecutionException | TimeoutException e) {
+//            System.out.println(" [!] Timeout: No response received within 20 seconds.");
+//        }
     }
 }
