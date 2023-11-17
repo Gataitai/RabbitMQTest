@@ -1,16 +1,21 @@
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rabbitmq.client.*;
+import Message.Message;
+import Message.MessageType;
 
 import java.io.IOException;
 import java.util.Scanner;
 import java.util.concurrent.TimeoutException;
-import Message.*;
+
 public class Consumer {
     private static final String QUEUE_NAME = "example_queue";
     private final ObjectMapper objectMapper;
+    private final Channel channel;
 
-    public Consumer() {
+    public Consumer() throws IOException, TimeoutException {
         this.objectMapper = new ObjectMapper();
+        Connection connection = getConnection();
+        this.channel = connection.createChannel();
     }
 
     public static void main(String[] args) throws IOException, TimeoutException {
@@ -18,22 +23,17 @@ public class Consumer {
         consumer.run();
     }
 
-    private void run() throws IOException, TimeoutException {
-        try (Connection connection = getConnection();
-             Channel channel = connection.createChannel()) {
+    private void run() throws IOException {
+        declareQueue();
 
-            declareQueue(channel);
+        Thread terminationListener = createTerminationListener();
+        terminationListener.start();
 
-            Thread terminationListener = createTerminationListener();
-            terminationListener.start();
-
-            DeliverCallback deliverCallback = createDeliverCallback(channel);
-            channel.basicConsume(QUEUE_NAME, true, deliverCallback, consumerTag -> {
-            });
-        }
+        DeliverCallback deliverCallback = createDeliverCallback();
+        channel.basicConsume(QUEUE_NAME, true, deliverCallback, consumerTag -> {});
     }
 
-    private void declareQueue(Channel channel) throws IOException {
+    private void declareQueue() throws IOException {
         channel.queueDeclare(QUEUE_NAME, false, false, false, null);
     }
 
@@ -50,25 +50,23 @@ public class Consumer {
         });
     }
 
-    private DeliverCallback createDeliverCallback(Channel channel) {
+    private DeliverCallback createDeliverCallback() {
         return (consumerTag, delivery) -> {
             Message receivedMessage = objectMapper.readValue(delivery.getBody(), Message.class);
             System.out.println(" [x] Received '" + receivedMessage.getText() + "'");
 
-            handleMessageType(channel, delivery, receivedMessage);
+            handleMessageType(delivery, receivedMessage);
         };
     }
 
-    private void handleMessageType(Channel channel, Delivery delivery, Message receivedMessage) throws IOException {
-        switch (receivedMessage.getMessageType()) {
-            case MESSAGE:
-                sendResponse(channel, delivery);
-                break;
-            // Add more cases for other message types if needed
+    private void handleMessageType(Delivery delivery, Message receivedMessage) throws IOException {
+        if (receivedMessage.getMessageType() == MessageType.MESSAGE) {
+            sendResponse(delivery);
         }
+        // Add more cases for other message types if needed
     }
 
-    private void sendResponse(Channel channel, Delivery delivery) throws IOException {
+    private void sendResponse(Delivery delivery) throws IOException {
         Message responseMessage = new Message(MessageType.OK, "hello back");
         byte[] responseBytes = objectMapper.writeValueAsBytes(responseMessage);
 
