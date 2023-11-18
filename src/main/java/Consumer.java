@@ -30,7 +30,8 @@ public class Consumer {
         terminationListener.start();
 
         DeliverCallback deliverCallback = createDeliverCallback();
-        channel.basicConsume(QUEUE_NAME, true, deliverCallback, consumerTag -> {});
+        channel.basicConsume(QUEUE_NAME, true, deliverCallback, consumerTag -> {
+        });
     }
 
     private void declareRabbitMQ() throws IOException {

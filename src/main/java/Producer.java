@@ -4,9 +4,6 @@ import com.rabbitmq.client.*;
 import java.io.IOException;
 import java.util.Scanner;
 import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
 public class Producer {
@@ -17,11 +14,13 @@ public class Producer {
     private final ObjectMapper objectMapper;
     private final String callbackQueue;
     private final Channel channel;
+    private final TaskSaver taskSaver;
 
     public Producer() throws IOException, TimeoutException {
         this.objectMapper = new ObjectMapper();
         this.channel = createChannel();
         this.callbackQueue = channel.queueDeclare().getQueue();
+        this.taskSaver = new TaskSaver();
         declareRabbitMQ();  // Declare the exchange and bind the queue in the constructor
     }
 
@@ -35,7 +34,20 @@ public class Producer {
         terminationListener.start();
 
         // Send a message and wait for the response with a timeout of 20 seconds
-        sendMessageWithTimeout();
+        sendMessage();
+
+        //consume on the callbackqueue
+        DeliverCallback deliverCallback = createDeliverCallback();
+        channel.basicConsume(callbackQueue, true, deliverCallback, consumerTag -> {
+        });
+
+    }
+
+    private DeliverCallback createDeliverCallback() {
+        return (consumerTag, delivery) -> {
+            String correlationId = delivery.getProperties().getCorrelationId();
+            taskSaver.executeTask(correlationId, delivery);
+        };
     }
 
     private Channel createChannel() throws IOException, TimeoutException {
@@ -67,7 +79,7 @@ public class Producer {
                     System.exit(0);
                 } else if (input.equalsIgnoreCase("s")) {
                     try {
-                        sendMessageWithTimeout();
+                        sendMessage();
                     } catch (IOException e) {
                         e.printStackTrace();
                     }
@@ -77,12 +89,9 @@ public class Producer {
     }
 
 
-    private void sendMessageWithTimeout() throws IOException {
+    private void sendMessage() throws IOException {
         // Generate a unique correlation ID for this message
         String correlationId = UUID.randomUUID().toString();
-
-//        // Set up a CompletableFuture for handling the response
-//        CompletableFuture<Void> responseFuture = new CompletableFuture<>();
 
         // Send the message
         Message message = new Message(MessageType.MESSAGE, "hello");
@@ -93,33 +102,19 @@ public class Producer {
                 .replyTo(callbackQueue)
                 .build();
 
+        //save a task together with the correlationId in advance.
+        taskSaver.saveTask(correlationId, (delivery) -> {
+            Message receivedMessage;
+            try {
+                receivedMessage = objectMapper.readValue(delivery.getBody(), Message.class);
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+            System.out.println(receivedMessage.getText());
+        });
+
         // Publish the message
         channel.basicPublish(EXCHANGE_NAME, ROUTING_KEY, properties, messageBytes);
         System.out.println(" [x] Sent '" + message.getText() + "' with Correlation ID: " + correlationId);
-
-        // Set up the consumer for the specific correlation ID after publishing
-        DeliverCallback deliverCallback = (consumerTag, delivery) -> {
-            if(correlationId.equals(delivery.getProperties().getCorrelationId())){
-                try {
-                    Message responseMessage = objectMapper.readValue(delivery.getBody(), Message.class);
-                    System.out.println(" [x] Received response '" + responseMessage.getText() + "' for Correlation ID: " + correlationId);
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
-            }else {
-                System.out.printf("correlationId's dont match. correlationId: " + correlationId + " - delivery: " + delivery.getProperties().getCorrelationId());
-            }
-//            responseFuture.complete(null); // Complete the CompletableFuture on receiving a response
-        };
-
-        channel.basicConsume(callbackQueue, true, deliverCallback, consumerTag -> {
-        });
-
-//        // Wait for the response with a timeout of 20 seconds
-//        try {
-//            responseFuture.get(20, TimeUnit.SECONDS);
-//        } catch (InterruptedException | ExecutionException | TimeoutException e) {
-//            System.out.println(" [!] Timeout: No response received within 20 seconds.");
-//        }
     }
 }
