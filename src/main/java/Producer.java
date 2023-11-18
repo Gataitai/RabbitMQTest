@@ -29,12 +29,9 @@ public class Producer {
         producer.run();
     }
 
-    private void run() throws IOException, TimeoutException {
+    private void run() throws IOException {
         Thread terminationListener = createTerminationListener();
         terminationListener.start();
-
-        // Send a message and wait for the response with a timeout of 20 seconds
-        sendMessage();
 
         //consume on the callbackqueue
         DeliverCallback deliverCallback = createDeliverCallback();
@@ -46,6 +43,7 @@ public class Producer {
     private DeliverCallback createDeliverCallback() {
         return (consumerTag, delivery) -> {
             String correlationId = delivery.getProperties().getCorrelationId();
+            //executes task if the correlation id exists.
             taskSaver.executeTask(correlationId, delivery);
         };
     }

@@ -22,4 +22,11 @@ public class TaskSaver {
             taskMap.remove(correlationId);
         }
     }
+
+    public void removeTask(String correlationId) {
+        Consumer<Delivery> task = taskMap.get(correlationId);
+        if (task != null) {
+            taskMap.remove(correlationId);
+        }
+    }
 }
