@@ -33,6 +33,10 @@ public class Producer {
         Thread terminationListener = createTerminationListener();
         terminationListener.start();
 
+        for (int i = 0; i < 100000; i++) {
+            sendMessage();
+        }
+
         //consume on the callbackqueue
         DeliverCallback deliverCallback = createDeliverCallback();
         channel.basicConsume(callbackQueue, true, deliverCallback, consumerTag -> {

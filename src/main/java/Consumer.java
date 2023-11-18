@@ -62,7 +62,6 @@ public class Consumer {
         return (consumerTag, delivery) -> {
             Message receivedMessage = objectMapper.readValue(delivery.getBody(), Message.class);
             System.out.println(" [x] Received '" + receivedMessage.getText() + "'. from id: " + delivery.getProperties().getCorrelationId());
-
             handleMessageType(delivery, receivedMessage);
         };
     }
