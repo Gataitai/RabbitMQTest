@@ -41,8 +41,8 @@ public class Producer {
     }
 
     private void run() throws IOException {
-        Thread terminationListener = createTerminationListener();
-        terminationListener.start();
+        Thread keyListener = createKeyListener();
+        keyListener.start();
 
         //consume on the callbackqueue;
         channel.basicConsume(callbackQueue, true, (consumerTag, delivery) -> {
@@ -59,53 +59,69 @@ public class Producer {
         return connection.createChannel();
     }
 
-    private Thread createTerminationListener() {
+    private Thread createKeyListener() {
         return new Thread(() -> {
-            System.out.println("Press 'q' to terminate the producer or 's' to send a message.");
-            Scanner scanner = new Scanner(System.in);
+            String help = """
+                Commands:
+
+                L: List buildings
+                R: Request reservation
+                X: Cancel reservation
+                C: Confirm reservation
+                ?: This menu
+                Q: Quit
+                """;
+            System.out.println(help);
+            Scanner s = new Scanner(System.in);
+            String c = s.nextLine().toLowerCase();
             while (true) {
-                String input = scanner.nextLine();
-                if (input.equalsIgnoreCase("q")) {
-                    System.out.println("Terminating producer...");
-                    System.exit(0);
-                } else if (input.equalsIgnoreCase("s")) {
-                    try {
-                        sendMessage();
-                    } catch (IOException e) {
-                        e.printStackTrace();
+                switch (c) {
+                    case "?" -> System.out.println(help);
+                    case "l" -> sendMessage();
+                    case "r" -> System.out.println("r");
+                    case "x" -> System.out.println("x");
+                    case "c" -> System.out.println("c");
+                    case "q" -> {
+                        System.out.println("Terminating producer...");
+                        System.exit(0);
                     }
                 }
+                c = s.nextLine().toLowerCase();
             }
         });
     }
 
 
-    private void sendMessage() throws IOException {
-        // Generate a unique correlation ID for this message
-        String correlationId = UUID.randomUUID().toString();
+    private void sendMessage(){
+        try{
+            // Generate a unique correlation ID for this message
+            String correlationId = UUID.randomUUID().toString();
 
-        // Send the message
-        Message message = new Message(MessageType.MESSAGE, "hello");
-        byte[] messageBytes = objectMapper.writeValueAsBytes(message);
+            // Send the message
+            Message message = new Message(MessageType.MESSAGE, "hello");
+            byte[] messageBytes = objectMapper.writeValueAsBytes(message);
 
-        AMQP.BasicProperties properties = new AMQP.BasicProperties.Builder()
-                .correlationId(correlationId)
-                .replyTo(callbackQueue)
-                .build();
+            AMQP.BasicProperties properties = new AMQP.BasicProperties.Builder()
+                    .correlationId(correlationId)
+                    .replyTo(callbackQueue)
+                    .build();
 
-        //save a task together with the correlationId in advance.
-        taskSaver.saveTask(correlationId, (delivery) -> {
-            Message receivedMessage;
-            try {
-                receivedMessage = objectMapper.readValue(delivery.getBody(), Message.class);
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-            System.out.println(receivedMessage.getText());
-        });
+            //save a task together with the correlationId in advance.
+            taskSaver.saveTask(correlationId, (delivery) -> {
+                Message receivedMessage;
+                try {
+                    receivedMessage = objectMapper.readValue(delivery.getBody(), Message.class);
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
+                System.out.println(receivedMessage.getText());
+            });
 
-        // Publish the message
-        channel.basicPublish(EXCHANGE_NAME, ROUTING_KEY, properties, messageBytes);
-        System.out.println(" [x] Sent '" + message.getText() + "' with Correlation ID: " + correlationId);
+            // Publish the message
+            channel.basicPublish(EXCHANGE_NAME, ROUTING_KEY, properties, messageBytes);
+            System.out.println(" [x] Sent '" + message.getText() + "' with Correlation ID: " + correlationId);
+        }catch (Exception e){
+            System.out.println(e);
+        }
     }
 }
