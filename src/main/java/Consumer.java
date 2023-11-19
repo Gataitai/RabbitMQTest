@@ -16,8 +16,7 @@ public class Consumer {
 
     public Consumer() throws IOException, TimeoutException {
         this.objectMapper = new ObjectMapper();
-        Connection connection = getConnection();
-        this.channel = connection.createChannel();
+        this.channel = createChannel();
     }
 
     public static void main(String[] args) throws IOException, TimeoutException {
@@ -31,9 +30,17 @@ public class Consumer {
         Thread terminationListener = createTerminationListener();
         terminationListener.start();
 
-        DeliverCallback deliverCallback = createDeliverCallback();
-        channel.basicConsume(QUEUE_NAME, true, deliverCallback, consumerTag -> {
-        });
+        channel.basicConsume(QUEUE_NAME, true, (consumerTag, delivery) -> {
+            Message receivedMessage = objectMapper.readValue(delivery.getBody(), Message.class);
+            System.out.println(" [x] Received '" + receivedMessage.getText() + "'. from id: " + delivery.getProperties().getCorrelationId());
+
+            switch (receivedMessage.getMessageType()){
+                case MESSAGE -> sendResponse(delivery);
+                case OK -> System.out.println("ok");
+                case ERROR -> System.out.println("error");
+            }
+
+        }, consumerTag -> {});
     }
 
     private void declareRabbitMQ() throws IOException {
@@ -60,21 +67,6 @@ public class Consumer {
         });
     }
 
-    private DeliverCallback createDeliverCallback() {
-        return (consumerTag, delivery) -> {
-            Message receivedMessage = objectMapper.readValue(delivery.getBody(), Message.class);
-            System.out.println(" [x] Received '" + receivedMessage.getText() + "'. from id: " + delivery.getProperties().getCorrelationId());
-            handleMessageType(delivery, receivedMessage);
-        };
-    }
-
-    private void handleMessageType(Delivery delivery, Message receivedMessage) throws IOException {
-        if (receivedMessage.getMessageType() == MessageType.MESSAGE) {
-            sendResponse(delivery);
-        }
-        // Add more cases for other message types if needed
-    }
-
     private void sendResponse(Delivery delivery) throws IOException {
         Message receivedMessage = objectMapper.readValue(delivery.getBody(), Message.class);
 
@@ -90,12 +82,14 @@ public class Consumer {
         // Publish the response message with the correlationId
         channel.basicPublish("", delivery.getProperties().getReplyTo(), replyProperties, responseBytes);
 
-        System.out.println(" [x] Sent response '" + responseMessage.getText() + "'. to id: " +delivery.getProperties().getCorrelationId());
+        System.out.println(" [x] Sent response '" + responseMessage.getText() + "'. to id: " + delivery.getProperties().getCorrelationId());
     }
 
-    private Connection getConnection() throws IOException, TimeoutException {
+    private Channel createChannel() throws IOException, TimeoutException {
         ConnectionFactory factory = new ConnectionFactory();
         factory.setHost("localhost");
-        return factory.newConnection();
+        Connection connection = factory.newConnection();
+        return connection.createChannel();
     }
+
 }

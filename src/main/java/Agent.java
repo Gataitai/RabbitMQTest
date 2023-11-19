@@ -49,7 +49,7 @@ public class Agent {
         }, consumerTag -> {});
 
         //consume on the callback queue
-        channel.basicConsume(QUEUE_NAME, true, (consumerTag, delivery) -> {
+        channel.basicConsume(callbackQueue, true, (consumerTag, delivery) -> {
             String correlationId = delivery.getProperties().getCorrelationId();
             taskSaver.executeTask(correlationId, delivery);
         }, consumerTag -> {});

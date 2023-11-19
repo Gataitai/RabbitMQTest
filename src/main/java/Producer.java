@@ -24,7 +24,15 @@ public class Producer {
         this.channel = createChannel();
         this.callbackQueue = channel.queueDeclare().getQueue();
         this.taskSaver = new TaskSaver();
-        declareRabbitMQ();  // Declare the exchange and bind the queue in the constructor
+
+        // Declare the exchange
+        channel.exchangeDeclare(EXCHANGE_NAME, BuiltinExchangeType.DIRECT);
+
+        // Declare the queue
+        channel.queueDeclare(QUEUE_NAME, false, false, false, null);
+
+        // Bind the queue to the exchange with the routing key
+        channel.queueBind(QUEUE_NAME, EXCHANGE_NAME, ROUTING_KEY);
     }
 
     public static void main(String[] args) throws IOException, TimeoutException {
@@ -36,18 +44,12 @@ public class Producer {
         Thread terminationListener = createTerminationListener();
         terminationListener.start();
 
-        //consume on the callbackqueue
-        DeliverCallback deliverCallback = createDeliverCallback();
-        channel.basicConsume(callbackQueue, true, deliverCallback, consumerTag -> {
-        });
-
-    }
-
-    private DeliverCallback createDeliverCallback() {
-        return (consumerTag, delivery) -> {
+        //consume on the callbackqueue;
+        channel.basicConsume(callbackQueue, true, (consumerTag, delivery) -> {
             String correlationId = delivery.getProperties().getCorrelationId();
             taskSaver.executeTask(correlationId, delivery);
-        };
+        }, consumerTag -> {});
+
     }
 
     private Channel createChannel() throws IOException, TimeoutException {
@@ -55,17 +57,6 @@ public class Producer {
         factory.setHost("localhost");
         Connection connection = factory.newConnection();
         return connection.createChannel();
-    }
-
-    private void declareRabbitMQ() throws IOException {
-        // Declare the exchange
-        channel.exchangeDeclare(EXCHANGE_NAME, BuiltinExchangeType.DIRECT);
-
-        // Declare the queue
-        channel.queueDeclare(QUEUE_NAME, false, false, false, null);
-
-        // Bind the queue to the exchange with the routing key
-        channel.queueBind(QUEUE_NAME, EXCHANGE_NAME, ROUTING_KEY);
     }
 
     private Thread createTerminationListener() {
