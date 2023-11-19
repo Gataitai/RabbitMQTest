@@ -9,52 +9,50 @@ import java.util.Scanner;
 import java.util.UUID;
 import java.util.concurrent.TimeoutException;
 
-public class Producer {
+public class Agent {
     private static final String QUEUE_NAME = "example_queue";
     private static final String EXCHANGE_NAME = "direct_exchange";
     private static final String ROUTING_KEY = QUEUE_NAME;
-
     private final ObjectMapper objectMapper;
-    private final String callbackQueue;
     private final Channel channel;
+    private final String callbackQueue;
     private final TaskSaver taskSaver;
 
-    public Producer() throws IOException, TimeoutException {
-        this.objectMapper = new ObjectMapper();
+    public Agent() throws IOException, TimeoutException {
         this.channel = createChannel();
+        this.objectMapper = new ObjectMapper();
         this.callbackQueue = channel.queueDeclare().getQueue();
         this.taskSaver = new TaskSaver();
-        declareRabbitMQ();  // Declare the exchange and bind the queue in the constructor
     }
 
     public static void main(String[] args) throws IOException, TimeoutException {
-        Producer producer = new Producer();
-        producer.run();
+        Agent agent = new Agent();
+        agent.run();
     }
 
     private void run() throws IOException {
+        declareRabbitMQ();
+
         Thread terminationListener = createTerminationListener();
         terminationListener.start();
 
-        //consume on the callbackqueue
-        DeliverCallback deliverCallback = createDeliverCallback();
-        channel.basicConsume(callbackQueue, true, deliverCallback, consumerTag -> {
-        });
+        //consume on the main queue
+        channel.basicConsume(QUEUE_NAME, true, (consumerTag, delivery) -> {
+            Message receivedMessage = objectMapper.readValue(delivery.getBody(), Message.class);
 
-    }
+            switch (receivedMessage.getMessageType()){
+                case MESSAGE -> sendResponse(delivery);
+                case OK -> System.out.println("OK " + receivedMessage.getText());
+                case ERROR -> System.out.println("ERROR " + receivedMessage.getText());
+            }
 
-    private DeliverCallback createDeliverCallback() {
-        return (consumerTag, delivery) -> {
+        }, consumerTag -> {});
+
+        //consume on the callback queue
+        channel.basicConsume(QUEUE_NAME, true, (consumerTag, delivery) -> {
             String correlationId = delivery.getProperties().getCorrelationId();
             taskSaver.executeTask(correlationId, delivery);
-        };
-    }
-
-    private Channel createChannel() throws IOException, TimeoutException {
-        ConnectionFactory factory = new ConnectionFactory();
-        factory.setHost("localhost");
-        Connection connection = factory.newConnection();
-        return connection.createChannel();
+        }, consumerTag -> {});
     }
 
     private void declareRabbitMQ() throws IOException {
@@ -88,7 +86,6 @@ public class Producer {
         });
     }
 
-
     private void sendMessage() throws IOException {
         // Generate a unique correlation ID for this message
         String correlationId = UUID.randomUUID().toString();
@@ -116,5 +113,29 @@ public class Producer {
         // Publish the message
         channel.basicPublish(EXCHANGE_NAME, ROUTING_KEY, properties, messageBytes);
         System.out.println(" [x] Sent '" + message.getText() + "' with Correlation ID: " + correlationId);
+    }
+
+    private void sendResponse(Delivery delivery) throws IOException {
+
+        // Create the response message
+        Message responseMessage = new Message(MessageType.OK, "hello back");
+        byte[] responseBytes = objectMapper.writeValueAsBytes(responseMessage);
+
+        // Set the correlationId in the properties of the response message
+        AMQP.BasicProperties replyProperties = new AMQP.BasicProperties.Builder()
+                .correlationId(delivery.getProperties().getCorrelationId())
+                .build();
+
+        // Publish the response message with the correlationId
+        channel.basicPublish("", delivery.getProperties().getReplyTo(), replyProperties, responseBytes);
+
+        System.out.println(" [x] Sent response '" + responseMessage.getText() + "'. to id: " +delivery.getProperties().getCorrelationId());
+    }
+
+    private Channel createChannel() throws IOException, TimeoutException {
+        ConnectionFactory factory = new ConnectionFactory();
+        factory.setHost("localhost");
+        Connection connection = factory.newConnection();
+        return connection.createChannel();
     }
 }

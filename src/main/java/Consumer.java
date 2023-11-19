@@ -1,5 +1,7 @@
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rabbitmq.client.*;
+import common.Message;
+import common.MessageType;
 
 import java.io.IOException;
 import java.util.Scanner;

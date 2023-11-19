@@ -1,3 +1,5 @@
+package common;
+
 public class Message {
     private MessageType messageType;
     private String text;

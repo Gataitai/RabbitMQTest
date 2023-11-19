@@ -1,3 +1,5 @@
+package util;
+
 import com.rabbitmq.client.Delivery;
 
 import java.util.HashMap;
